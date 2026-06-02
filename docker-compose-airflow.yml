@@ -1,0 +1,55 @@
+x-airflow-common:
+  &airflow-common
+  image: apache/airflow:2.9.3-python3.12
+  environment:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+  volumes:
+    - ./airflow/dags:/opt/airflow/dags
+    - ./airflow/logs:/opt/airflow/logs
+    - ./airflow/plugins:/opt/airflow/plugins
+    - ./scripts:/opt/airflow/scripts
+    - ./data:/opt/airflow/data
+    - ./.env:/opt/airflow/.env
+  user: "${AIRFLOW_UID:-50000}:0"
+
+services:
+  airflow-postgres:
+    image: postgres:16
+    container_name: airflow-postgres
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow_postgres_data:/var/lib/postgresql/data
+
+  airflow-init:
+    <<: *airflow-common
+    container_name: airflow-init
+    depends_on:
+      - airflow-postgres
+    command: >
+
+      bash -c "airflow db migrate &&
+
+      airflow users create --username admin --password admin --firstname Johnson --lastname Chang --role Admin --email admin@example.com"
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: airflow-webserver
+    depends_on:
+      - airflow-postgres
+    ports:
+      - "8080:8080"
+    command: webserver
+
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: airflow-scheduler
+    depends_on:
+      - airflow-postgres
+    command: scheduler
+
+volumes:
+  airflow_postgres_data:
