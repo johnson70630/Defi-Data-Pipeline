@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: defi-postgres
+    environment:
+      POSTGRES_USER: defi_user
+      POSTGRES_PASSWORD: defi_password
+      POSTGRES_DB: defi_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - defi_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  defi_postgres_data:
