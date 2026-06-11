@@ -16,10 +16,13 @@ logging.basicConfig(
 
 PROCESSED_FILE = Path("data/processed/uniswap/uniswap_swaps_processed.csv")
 
-POSTGRES_URL = os.getenv(
-    "POSTGRES_URL",
-    "postgresql+psycopg2://defi_user:defi_password@defi-postgres:5432/defi_db",
-)
+if Path("/opt/airflow").exists():
+    POSTGRES_URL = "postgresql+psycopg2://defi_user:defi_password@defi-postgres:5432/defi_db"
+else:
+    POSTGRES_URL = os.getenv(
+        "POSTGRES_URL",
+        "postgresql+psycopg2://defi_user:defi_password@localhost:5433/defi_db",
+    )
 
 TARGET_TABLE = "uniswap_swaps"
 STAGING_TABLE = "stg_uniswap_swaps"
