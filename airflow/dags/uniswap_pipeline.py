@@ -1,11 +1,18 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from airflow import DAG
 from airflow.operators.bash import BashOperator
 
+default_args = {
+    "owner": "airflow",
+    "retries": 3,
+    "retry_delay": timedelta(minutes=2),
+}
+
 with DAG(
     dag_id="uniswap_pipeline",
-    start_date=datetime(2025, 1, 1),
+    default_args=default_args,
+    start_date=datetime(2026, 6, 1),
     schedule="@daily",
     catchup=False,
     tags=["defi", "uniswap"],
