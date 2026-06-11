@@ -26,6 +26,14 @@ with DAG(
         """,
     )
 
+    upload_raw_to_s3_task = BashOperator(
+    task_id="upload_raw_to_s3",
+    bash_command="""
+    cd /opt/airflow &&
+    python scripts/upload_raw_to_s3.py
+    """,
+    )
+
     transform_task = BashOperator(
         task_id="transform_swaps",
         bash_command="""
@@ -42,4 +50,4 @@ with DAG(
         """,
     )
 
-    extract_task >> transform_task >> load_task
+    extract_task >> upload_raw_to_s3_task >> transform_task >> load_task
