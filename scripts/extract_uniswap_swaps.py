@@ -8,6 +8,8 @@ from typing import Any
 
 import requests
 from dotenv import load_dotenv
+from sqlalchemy import create_engine, text
+from sqlalchemy.exc import SQLAlchemyError
 
 load_dotenv()
 
@@ -17,6 +19,7 @@ logging.basicConfig(
 )
 
 API_KEY = os.getenv("GRAPH_API_KEY", "").strip()
+
 SUBGRAPH_ID = "5zvR82QoaXYFyDEKLZ9t6v9adgnptxYpKpSbxtgVENFV"
 GRAPH_URL = f"https://gateway.thegraph.com/api/{API_KEY}/subgraphs/id/{SUBGRAPH_ID}"
 
@@ -24,16 +27,53 @@ OUTPUT_DIR = Path("data/raw/uniswap")
 BATCH_SIZE = 1000
 MAX_RECORDS = 10_000
 REQUEST_SLEEP_SECONDS = 0.2
+TARGET_TABLE = "uniswap_swaps"
 
 
-def build_query(first: int, skip: int) -> str:
+def get_postgres_url() -> str:
+    if os.getenv("POSTGRES_URL"):
+        return os.getenv("POSTGRES_URL", "")
+
+    if Path("/opt/airflow").exists():
+        return "postgresql+psycopg2://defi_user:defi_password@defi-postgres:5432/defi_db"
+
+    return "postgresql+psycopg2://defi_user:defi_password@localhost:5433/defi_db"
+
+
+def get_latest_timestamp() -> int | None:
+    postgres_url = get_postgres_url()
+    engine = create_engine(postgres_url)
+
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(
+                text(f"SELECT MAX(timestamp) FROM {TARGET_TABLE};")
+            ).scalar()
+
+            if result is None:
+                return None
+
+            return int(result)
+
+    except SQLAlchemyError:
+        logging.warning("Could not read latest timestamp. Running full extraction.")
+        return None
+
+
+def build_query(first: int, skip: int, latest_timestamp: int | None) -> str:
+    where_clause = ""
+
+    if latest_timestamp is not None:
+        where_clause = f"where: {{ timestamp_gt: {latest_timestamp} }},"
+
     return f"""
     {{
       swaps(
         first: {first},
         skip: {skip},
+        {where_clause}
         orderBy: timestamp,
-        orderDirection: desc
+        orderDirection: asc
       ) {{
         id
         timestamp
@@ -68,11 +108,22 @@ def fetch_swaps() -> list[dict[str, Any]]:
     if not API_KEY:
         raise ValueError("GRAPH_API_KEY is missing. Add it to your .env file.")
 
+    latest_timestamp = get_latest_timestamp()
+
+    if latest_timestamp:
+        logging.info("Running incremental extraction from timestamp >= %s", latest_timestamp)
+    else:
+        logging.info("Running full extraction because no latest timestamp was found.")
+
     all_swaps: list[dict[str, Any]] = []
     skip = 0
 
     while len(all_swaps) < MAX_RECORDS:
-        query = build_query(first=BATCH_SIZE, skip=skip)
+        query = build_query(
+            first=BATCH_SIZE,
+            skip=skip,
+            latest_timestamp=latest_timestamp,
+        )
 
         logging.info("Fetching swaps: skip=%s, batch_size=%s", skip, BATCH_SIZE)
 
