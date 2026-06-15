@@ -29,3 +29,16 @@ defi_postgres_data/
 # IDE
 .vscode/
 .idea/
+
+# Airflow
+airflow/logs/
+airflow/plugins/__pycache__/
+
+# dbt build artifacts
+target/
+dbt_packages/
+logs/
+
+# Snowflake
+.snowflake/
+connections.toml
