@@ -1,0 +1,20 @@
+version: 2
+
+sources:
+  - name: raw
+    database: DEFI_DB
+    schema: RAW
+    tables:
+      - name: raw_uniswap_swaps
+        identifier: RAW_UNISWAP_SWAPS
+
+models:
+  - name: stg_uniswap_swaps
+    columns:
+      - name: swap_id
+        tests:
+          - not_null
+          - unique
+      - name: amount_usd
+        tests:
+          - not_null
