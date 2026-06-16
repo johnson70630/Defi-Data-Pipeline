@@ -1,0 +1,35 @@
+version: 2
+
+models:
+  - name: daily_swap_volume
+    description: Daily Uniswap swap volume summary
+    columns:
+      - name: event_date
+        description: Date of swap activity
+        tests:
+          - not_null
+          - unique
+      - name: swap_count
+        description: Number of swaps on that date
+      - name: total_volume_usd
+        description: Total swap volume in USD
+
+  - name: token_volume
+    description: Swap volume grouped by token pair
+    columns:
+      - name: token0_symbol
+        description: Symbol of token0
+      - name: token1_symbol
+        description: Symbol of token1
+      - name: total_volume_usd
+        description: Total volume for the token pair
+
+  - name: pool_volume
+    description: Swap volume grouped by Uniswap pool
+    columns:
+      - name: pool_id
+        description: Uniswap pool contract address
+        tests:
+          - not_null
+      - name: total_volume_usd
+        description: Total volume for the pool
