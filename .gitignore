@@ -42,3 +42,8 @@ logs/
 # Snowflake
 .snowflake/
 connections.toml
+
+*.p8
+*.pub
+*.pem
+*.key
