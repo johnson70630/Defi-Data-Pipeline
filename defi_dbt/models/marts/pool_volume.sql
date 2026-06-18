@@ -1,4 +1,7 @@
-{{ config(materialized='table') }}
+{{ config(
+    materialized='incremental',
+    unique_key='pool_id'
+) }}
 
 SELECT
     pool_id,

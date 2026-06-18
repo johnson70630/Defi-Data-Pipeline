@@ -42,12 +42,36 @@ with DAG(
         """,
     )
 
-    load_task = BashOperator(
-        task_id="load_to_postgres",
+    # load_task = BashOperator(
+    #     task_id="load_to_postgres",
+    #     bash_command="""
+    #     cd /opt/airflow &&
+    #     python scripts/load_swaps_to_postgres.py
+    #     """,
+    # )
+
+    load_snowflake_task = BashOperator(
+    task_id="load_to_snowflake",
+    bash_command="""
+    cd /opt/airflow &&
+    python scripts/load_swaps_to_snowflake.py
+    """,
+    )
+
+    dbt_run_task = BashOperator(
+        task_id="dbt_run",
         bash_command="""
-        cd /opt/airflow &&
-        python scripts/load_swaps_to_postgres.py
+        cd /opt/airflow/defi_dbt &&
+        dbt run
         """,
     )
 
-    extract_task >> upload_raw_to_s3_task >> transform_task >> load_task
+    dbt_test_task = BashOperator(
+        task_id="dbt_test",
+        bash_command="""
+        cd /opt/airflow/defi_dbt &&
+        dbt test
+        """,
+    )
+
+    extract_task >> upload_raw_to_s3_task >> transform_task >> load_snowflake_task >> dbt_run_task >> dbt_test_task

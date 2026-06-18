@@ -1,4 +1,7 @@
-{{ config(materialized='table') }}
+{{ config(
+    materialized='incremental',
+    unique_key=['token0_symbol', 'token1_symbol']
+) }}
 
 SELECT
     token0_symbol,

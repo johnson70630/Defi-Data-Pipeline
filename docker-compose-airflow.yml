@@ -5,7 +5,9 @@ x-airflow-common:
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres/airflow
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
-    _PIP_ADDITIONAL_REQUIREMENTS: "boto3"
+    _PIP_ADDITIONAL_REQUIREMENTS: "boto3 dbt-snowflake"
+    SNOWFLAKE_PRIVATE_KEY_PATH: /home/airflow/.ssh/snowflake/dbt_snowflake_key.p8
+    SNOWFLAKE_KEY_PASSPHRASE: ${SNOWFLAKE_KEY_PASSPHRASE}
   volumes:
     - ./airflow/dags:/opt/airflow/dags
     - ./airflow/logs:/opt/airflow/logs
@@ -14,6 +16,9 @@ x-airflow-common:
     - ./data:/opt/airflow/data
     - ./.env:/opt/airflow/.env
     - ~/.aws:/home/airflow/.aws:ro
+    - ./defi_dbt:/opt/airflow/defi_dbt
+    - ~/.dbt:/home/airflow/.dbt:ro
+    - ~/.ssh/snowflake:/home/airflow/.ssh/snowflake:ro
   user: "${AIRFLOW_UID:-50000}:0"
 
 services:
