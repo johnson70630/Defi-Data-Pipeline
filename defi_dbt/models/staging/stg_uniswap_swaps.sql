@@ -2,6 +2,17 @@
     materialized='view'
 ) }}
 
+WITH ranked_swaps AS (
+    SELECT
+        *,
+        ROW_NUMBER() OVER (
+            PARTITION BY swap_id
+            ORDER BY event_time DESC
+        ) AS rn
+    FROM {{ source('raw', 'raw_uniswap_swaps') }}
+    WHERE swap_id IS NOT NULL
+)
+
 SELECT
     swap_id,
     timestamp AS event_timestamp,
@@ -27,5 +38,5 @@ SELECT
     token1_symbol,
     token1_name
 
-FROM {{ source('raw', 'raw_uniswap_swaps') }}
-WHERE swap_id IS NOT NULL
+FROM ranked_swaps
+WHERE rn = 1

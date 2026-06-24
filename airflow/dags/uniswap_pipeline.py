@@ -42,6 +42,14 @@ with DAG(
         """,
     )
 
+    upload_processed_to_s3_task = BashOperator(
+    task_id="upload_processed_to_s3",
+    bash_command="""
+    cd /opt/airflow &&
+    python scripts/upload_processed_to_s3.py
+    """,
+)
+
     # load_task = BashOperator(
     #     task_id="load_to_postgres",
     #     bash_command="""
@@ -74,4 +82,4 @@ with DAG(
         """,
     )
 
-    extract_task >> upload_raw_to_s3_task >> transform_task >> load_snowflake_task >> dbt_run_task >> dbt_test_task
+    extract_task >> upload_raw_to_s3_task >> transform_task >> upload_processed_to_s3_task >> load_snowflake_task >> dbt_run_task >> dbt_test_task
