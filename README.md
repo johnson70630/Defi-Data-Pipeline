@@ -1,12 +1,14 @@
 # DeFi Data Pipeline
 
-An end-to-end Data Engineering project that ingests Uniswap swap data from The Graph API, stores raw blockchain data in AWS S3 and Snowflake, transforms data using dbt, and orchestrates workflows with Apache Airflow.
+An end-to-end Data Engineering project that builds a production-style ELT pipeline for Uniswap V3 blockchain data. The pipeline incrementally extracts swap events from The Graph API, stores raw and processed data in Amazon S3, loads data into Snowflake, transforms it with dbt, and visualizes analytics through a Streamlit dashboard.
 
-The project demonstrates modern ELT architecture, incremental data processing, automated data quality testing, and cloud data warehousing practices commonly used in production data platforms.
+The project demonstrates modern data engineering practices including workflow orchestration with Apache Airflow, incremental data processing, cloud data warehousing, automated data quality testing, and dashboard reporting.
 
 ---
 
 ## Architecture
+
+![Architecture](images/architecture.png)
 
 ```text
 The Graph API
@@ -187,6 +189,12 @@ Example:
 
 ---
 
+## Snowflake Raw Data
+
+![Snowflake](images/snowflake_raw_table.png)
+
+---
+
 ## Data Quality Testing
 
 Implemented using dbt tests.
@@ -209,6 +217,12 @@ Run tests:
 ```bash
 uv run dbt test
 ```
+
+---
+
+## dbt Lineage
+
+![dbt Lineage](images/dbt_lineage.png)
 
 ---
 
@@ -254,7 +268,13 @@ dbt_run
 dbt_test
 ```
 
-The workflow is fully automated and scheduled through Apache Airflow.
+---
+
+### Airflow Pipeline
+
+![Airflow DAG](images/airflow_pipeline.png)
+
+The Airflow DAG orchestrates the complete ELT workflow, including incremental extraction, S3 uploads, data transformation, Snowflake loading, dbt model execution, and automated data quality testing.
 
 ---
 
@@ -281,54 +301,44 @@ uv run dbt run
 uv run dbt test
 ```
 
+### Launch Dashboard
+
+```bash
+uv run streamlit run dashboard/app.py
+```
+
 ---
 
-## Key Data Engineering Concepts Demonstrated
+## Streamlit Dashboard
 
-### Data Engineering
+### Overview
 
-- ELT Pipelines
-- Workflow Orchestration
-- Incremental Loading
-- Data Warehousing
-- Data Lakes
+![Dashboard Overview](images/dashboard_overview.png)
 
-### Data Modeling
+### Analytics
 
-- Raw Layer
-- Staging Layer
-- Mart Layer
-- Analytical Aggregations
+![Dashboard Analytics](images/dashboard_analytics.png)
 
-### Data Quality
+---
 
-- Uniqueness Validation
-- Null Validation
-- Automated Testing
+## Amazon S3 Data Lake
 
-### Security
+Raw, processed, and historical backfill datasets are stored separately to support incremental ingestion, analytics, and recovery.
 
-- Service Accounts
-- Role-Based Access Control
-- RSA Authentication
-
-### Cloud Data Platforms
-
-- AWS S3
-- Snowflake
-- Apache Airflow
+![S3 Bucket](images/s3_bucket_structure.png)
 
 ---
 
 ## Future Enhancements
 
-- Streamlit analytics dashboard
-- Snowflake COPY INTO from S3
-- Spark-based transformations
-- CI/CD deployment pipeline
-- Real-time ingestion with Kafka
-- Kubernetes deployment
-- Advanced monitoring and alerting
+- Load data directly from Amazon S3 into Snowflake using COPY INTO
+- Store processed datasets in Apache Parquet format
+- Add CI/CD pipeline with GitHub Actions
+- Deploy Streamlit dashboard to the cloud
+- Integrate data quality monitoring and alerting
+- Support additional DeFi protocols beyond Uniswap V3
+- Implement real-time streaming ingestion with Kafka
+- Deploy pipeline components on Kubernetes
 
 ---
 
