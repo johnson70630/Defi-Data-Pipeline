@@ -31,6 +31,9 @@ MAX_RECORDS: int | None = None
 REQUEST_SLEEP_SECONDS = 0.2
 BOOTSTRAP_LOOKBACK_DAYS = int(os.getenv("BOOTSTRAP_LOOKBACK_DAYS", "30"))
 OVERLAP_SECONDS = 600
+EXTRACTION_WINDOW_SECONDS = int(os.getenv("EXTRACTION_WINDOW_SECONDS", "300"))
+MAX_GRAPH_SKIP = int(os.getenv("MAX_GRAPH_SKIP", "20000"))
+USE_LOCAL_CHECKPOINT = os.getenv("USE_LOCAL_CHECKPOINT", "false").lower() == "true"
 SNOWFLAKE_ACCOUNT = os.getenv("SNOWFLAKE_ACCOUNT", "JC01541.us-east-2.aws")
 SNOWFLAKE_USER = os.getenv("SNOWFLAKE_USER", "DBT_USER")
 SNOWFLAKE_ROLE = os.getenv("SNOWFLAKE_ROLE", "DBT_ROLE")
@@ -155,21 +158,18 @@ def get_latest_timestamp() -> int | None:
         return bootstrap_timestamp
 
 
-def build_query(first: int, skip: int, latest_timestamp: int | None) -> str:
-    where_clause = ""
-    order_direction = "asc"
-
-    if latest_timestamp is not None:
-        where_clause = f"where: {{ timestamp_gte: {latest_timestamp} }},"
-
+def build_query(first: int, skip: int, start_timestamp: int, end_timestamp: int) -> str:
     return f"""
     {{
       swaps(
         first: {first},
         skip: {skip},
-        {where_clause}
+        where: {{
+          timestamp_gte: {start_timestamp},
+          timestamp_lt: {end_timestamp}
+        }},
         orderBy: timestamp,
-        orderDirection: {order_direction}
+        orderDirection: asc
       ) {{
         id
         timestamp
@@ -205,7 +205,12 @@ def fetch_swaps() -> list[dict[str, Any]]:
         raise ValueError("GRAPH_API_KEY is missing. Add it to your .env file.")
 
     snowflake_timestamp = get_latest_timestamp()
-    local_checkpoint_timestamp = read_local_checkpoint()
+    local_checkpoint_timestamp = read_local_checkpoint() if USE_LOCAL_CHECKPOINT else None
+
+    if USE_LOCAL_CHECKPOINT:
+        logging.info("Local checkpoint is enabled for extraction recovery.")
+    else:
+        logging.info("Local checkpoint is disabled. Using Snowflake checkpoint as source of truth.")
 
     if snowflake_timestamp is not None and local_checkpoint_timestamp is not None:
         latest_timestamp = max(snowflake_timestamp, local_checkpoint_timestamp - OVERLAP_SECONDS)
@@ -216,66 +221,128 @@ def fetch_swaps() -> list[dict[str, Any]]:
     else:
         latest_timestamp = None
 
-    if latest_timestamp:
-        logging.info("Running extraction from timestamp >= %s", latest_timestamp)
-    else:
-        logging.info("Running extraction without timestamp checkpoint.")
+    if latest_timestamp is None:
+        latest_timestamp = get_bootstrap_timestamp()
+
+    extraction_end_timestamp = int(datetime.now(UTC).timestamp()) + 1
+
+    logging.info(
+        "Running windowed extraction from timestamp >= %s to < %s using %s-second windows.",
+        latest_timestamp,
+        extraction_end_timestamp,
+        EXTRACTION_WINDOW_SECONDS,
+    )
 
     all_swaps: list[dict[str, Any]] = []
-    skip = 0
+    total_windows_processed = 0
+    cursor_timestamp = latest_timestamp
 
     extracted_at = datetime.now(UTC)
     partial_output_path = OUTPUT_DIR / f"uniswap_swaps_{extracted_at.strftime('%Y%m%d_%H%M%S')}_partial.json"
 
-    while MAX_RECORDS is None or len(all_swaps) < MAX_RECORDS:
-        query = build_query(
-            first=BATCH_SIZE,
-            skip=skip,
-            latest_timestamp=latest_timestamp,
+    while cursor_timestamp < extraction_end_timestamp and (
+        MAX_RECORDS is None or len(all_swaps) < MAX_RECORDS
+    ):
+        window_end_timestamp = min(
+            cursor_timestamp + EXTRACTION_WINDOW_SECONDS,
+            extraction_end_timestamp,
         )
+        skip = 0
 
-        logging.info("Fetching swaps: skip=%s, batch_size=%s", skip, BATCH_SIZE)
+        window_swaps_fetched = 0
 
-        response = requests.post(
-            GRAPH_URL,
-            json={"query": query},
-            timeout=60,
-        )
-
-        response.raise_for_status()
-        payload = response.json()
-
-        if "errors" in payload:
-            raise RuntimeError(f"GraphQL error: {payload['errors']}")
-
-        swaps = payload.get("data", {}).get("swaps", [])
-
-        if not swaps:
-            logging.info("No more swaps returned.")
-            break
-
-        all_swaps.extend(swaps)
-        logging.info("Total swaps fetched: %s", len(all_swaps))
-
-        latest_batch_timestamp = int(swaps[-1]["timestamp"])
-        latest_batch_time = datetime.fromtimestamp(latest_batch_timestamp, UTC)
         logging.info(
-            "Latest fetched swap timestamp=%s (%s)",
-            latest_batch_timestamp,
-            latest_batch_time.isoformat(),
+            "Fetching window: [%s, %s)",
+            datetime.fromtimestamp(cursor_timestamp, UTC).isoformat(),
+            datetime.fromtimestamp(window_end_timestamp, UTC).isoformat(),
         )
 
-        save_raw_data(all_swaps, output_path=partial_output_path)
-        write_local_checkpoint(latest_batch_timestamp, len(all_swaps))
-        logging.info("Saved partial extraction to %s", partial_output_path)
-        logging.info("Updated local checkpoint at %s", CHECKPOINT_PATH)
+        while MAX_RECORDS is None or len(all_swaps) < MAX_RECORDS:
+            if skip > MAX_GRAPH_SKIP:
+                raise RuntimeError(
+                    f"GraphQL pagination exceeded max skip={MAX_GRAPH_SKIP} for window "
+                    f"[{cursor_timestamp}, {window_end_timestamp}). "
+                    "Reduce EXTRACTION_WINDOW_SECONDS."
+                )
 
-        if MAX_RECORDS is not None and len(all_swaps) >= MAX_RECORDS:
-            logging.info("Reached MAX_RECORDS limit: %s", MAX_RECORDS)
-            break
+            query = build_query(
+                first=BATCH_SIZE,
+                skip=skip,
+                start_timestamp=cursor_timestamp,
+                end_timestamp=window_end_timestamp,
+            )
 
-        skip += BATCH_SIZE
-        time.sleep(REQUEST_SLEEP_SECONDS)
+            logging.info(
+                "Fetching swaps: window_start=%s, window_end=%s, skip=%s, batch_size=%s",
+                cursor_timestamp,
+                window_end_timestamp,
+                skip,
+                BATCH_SIZE,
+            )
+
+            response = requests.post(
+                GRAPH_URL,
+                json={"query": query},
+                timeout=60,
+            )
+
+            response.raise_for_status()
+            payload = response.json()
+
+            if "errors" in payload:
+                raise RuntimeError(f"GraphQL error: {payload['errors']}")
+
+            swaps = payload.get("data", {}).get("swaps", [])
+
+            if not swaps:
+                logging.info("No more swaps returned for current window.")
+                break
+
+            all_swaps.extend(swaps)
+            window_swaps_fetched += len(swaps)
+            logging.info(
+                "Progress: total_swaps_fetched=%s, current_window_swaps=%s, current_batch_size=%s",
+                len(all_swaps),
+                window_swaps_fetched,
+                len(swaps),
+            )
+
+            latest_batch_timestamp = int(swaps[-1]["timestamp"])
+            latest_batch_time = datetime.fromtimestamp(latest_batch_timestamp, UTC)
+            logging.info(
+                "Latest fetched swap timestamp=%s (%s)",
+                latest_batch_timestamp,
+                latest_batch_time.isoformat(),
+            )
+
+            save_raw_data(all_swaps, output_path=partial_output_path)
+            write_local_checkpoint(latest_batch_timestamp, len(all_swaps))
+            logging.info("Saved partial extraction to %s", partial_output_path)
+            logging.info("Updated local checkpoint at %s", CHECKPOINT_PATH)
+
+            if len(swaps) < BATCH_SIZE:
+                logging.info("Current window completed with final partial batch.")
+                break
+
+            if MAX_RECORDS is not None and len(all_swaps) >= MAX_RECORDS:
+                logging.info("Reached MAX_RECORDS limit: %s", MAX_RECORDS)
+                break
+
+            skip += BATCH_SIZE
+            time.sleep(REQUEST_SLEEP_SECONDS)
+
+        total_windows_processed += 1
+        logging.info(
+            "Completed window #%s: window_swaps=%s, total_swaps_fetched=%s, next_cursor=%s (%s)",
+            total_windows_processed,
+            window_swaps_fetched,
+            len(all_swaps),
+            window_end_timestamp,
+            datetime.fromtimestamp(window_end_timestamp, UTC).isoformat(),
+        )
+
+        cursor_timestamp = window_end_timestamp
+        write_local_checkpoint(cursor_timestamp, len(all_swaps))
 
     if MAX_RECORDS is not None:
         return all_swaps[:MAX_RECORDS]

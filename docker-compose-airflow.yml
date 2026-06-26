@@ -8,6 +8,9 @@ x-airflow-common:
     _PIP_ADDITIONAL_REQUIREMENTS: "boto3 dbt-snowflake"
     SNOWFLAKE_PRIVATE_KEY_PATH: /home/airflow/.ssh/snowflake/dbt_snowflake_key.p8
     SNOWFLAKE_KEY_PASSPHRASE: ${SNOWFLAKE_KEY_PASSPHRASE}
+    USE_LOCAL_CHECKPOINT: ${USE_LOCAL_CHECKPOINT:-false}
+    EXTRACTION_WINDOW_SECONDS: ${EXTRACTION_WINDOW_SECONDS:-300}
+    MAX_GRAPH_SKIP: ${MAX_GRAPH_SKIP:-20000}
   volumes:
     - ./airflow/dags:/opt/airflow/dags
     - ./airflow/logs:/opt/airflow/logs
