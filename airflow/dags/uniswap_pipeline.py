@@ -15,6 +15,7 @@ with DAG(
     start_date=datetime(2026, 6, 1),
     schedule="@daily",
     catchup=False,
+    max_active_runs=1,
     tags=["defi", "uniswap"],
 ) as dag:
 
@@ -27,11 +28,11 @@ with DAG(
     )
 
     upload_raw_to_s3_task = BashOperator(
-    task_id="upload_raw_to_s3",
-    bash_command="""
-    cd /opt/airflow &&
-    python scripts/upload_raw_to_s3.py
-    """,
+        task_id="upload_raw_to_s3",
+        bash_command="""
+        cd /opt/airflow &&
+        python scripts/upload_raw_to_s3.py
+        """,
     )
 
     transform_task = BashOperator(
@@ -43,12 +44,12 @@ with DAG(
     )
 
     upload_processed_to_s3_task = BashOperator(
-    task_id="upload_processed_to_s3",
-    bash_command="""
-    cd /opt/airflow &&
-    python scripts/upload_processed_to_s3.py
-    """,
-)
+        task_id="upload_processed_to_s3",
+        bash_command="""
+        cd /opt/airflow &&
+        python scripts/upload_processed_to_s3.py
+        """,
+    )
 
     # load_task = BashOperator(
     #     task_id="load_to_postgres",
@@ -59,11 +60,11 @@ with DAG(
     # )
 
     load_snowflake_task = BashOperator(
-    task_id="load_to_snowflake",
-    bash_command="""
-    cd /opt/airflow &&
-    python scripts/load_swaps_to_snowflake.py
-    """,
+        task_id="load_to_snowflake",
+        bash_command="""
+        cd /opt/airflow &&
+        python scripts/load_swaps_to_snowflake.py
+        """,
     )
 
     dbt_run_task = BashOperator(
@@ -82,4 +83,12 @@ with DAG(
         """,
     )
 
-    extract_task >> upload_raw_to_s3_task >> transform_task >> upload_processed_to_s3_task >> load_snowflake_task >> dbt_run_task >> dbt_test_task
+    (
+        extract_task
+        >> upload_raw_to_s3_task
+        >> transform_task
+        >> upload_processed_to_s3_task
+        >> load_snowflake_task
+        >> dbt_run_task
+        >> dbt_test_task
+    )
